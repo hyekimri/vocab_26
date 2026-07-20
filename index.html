@@ -133,21 +133,36 @@
   .match-card.shake{background:var(--coral); border-color:var(--coral-dark); color:var(--white);}
 
   /* 보상 */
-  .char-hero{text-align:center; padding:10px 0 6px;}
-  .char-hero .emoji{font-size:80px; display:block;}
-  .char-hero .stage-name{font-family:'Gaegu',cursive; font-size:20px; margin-top:4px;}
-  .star-bar-wrap{max-width:320px; margin:14px auto; }
+  .char-hero{
+    text-align:center; padding:26px 10px 18px; border-radius:20px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.4);
+    position:relative; overflow:hidden;
+  }
+  .char-hero .hero-emoji{font-size:76px; display:block; filter:drop-shadow(0 6px 10px rgba(43,58,85,0.25)); animation:bob 2.6s ease-in-out infinite;}
+  @keyframes bob{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);} }
+  .stage-sparkles{font-size:15px; letter-spacing:3px; margin-top:2px; min-height:18px;}
+  .char-hero .stage-name{font-family:'Gaegu',cursive; font-size:20px; margin-top:2px; color:var(--navy); background:rgba(255,255,255,.75); display:inline-block; padding:3px 14px; border-radius:20px;}
+  .star-bar-wrap{max-width:320px; margin:16px auto 6px; }
   .star-count{text-align:center; font-family:'Gaegu',cursive; font-size:16px; margin-bottom:6px;}
   .star-bar-bg{background:var(--line); border-radius:20px; height:16px; overflow:hidden;}
-  .star-bar-fill{background:var(--yellow); height:100%; border-radius:20px; transition:width .4s;}
+  .star-bar-fill{background:linear-gradient(90deg,var(--yellow),#FFA53C); height:100%; border-radius:20px; transition:width .4s;}
   .star-next{text-align:center; font-size:12px; color:var(--muted); margin-top:6px;}
-  .char-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:18px;}
-  .char-option{
-    border:2px solid var(--line); border-radius:16px; padding:12px; text-align:center; cursor:pointer; background:var(--white);
+
+  .roster-title{font-family:'Gaegu',cursive; font-size:16px; margin:20px 2px 10px; color:var(--navy);}
+  .roster-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .roster-card{
+    border-radius:14px; padding:10px 6px; text-align:center; border:2px solid var(--line); background:var(--white);
   }
-  .char-option.selected{border-color:var(--purple); background:#F5EFFC;}
-  .char-option .emoji{font-size:34px;}
-  .char-option .name{font-family:'Gaegu',cursive; font-size:15px; margin-top:2px;}
+  .roster-card .roster-emoji{font-size:26px;}
+  .roster-card .roster-name{font-family:'Gaegu',cursive; font-size:12.5px; margin-top:3px; line-height:1.2;}
+  .roster-card .roster-badge{font-size:10px; color:var(--muted); margin-top:2px;}
+  .roster-card.done{color:var(--white); border-color:transparent;}
+  .roster-card.done .roster-badge{color:rgba(255,255,255,.85);}
+  .roster-card.current{border-color:var(--purple); background:#F5EFFC; box-shadow:0 0 0 3px rgba(155,114,207,.15);}
+  .roster-card.next{background:#F2F4F7;}
+  .roster-card.next .roster-emoji.silhouette{filter:brightness(0) opacity(0.4);}
+  .roster-card.locked{background:#F2F4F7; opacity:.75;}
+  .roster-card .mystery-mark{font-size:22px; font-weight:900; color:#B8C2D1; font-family:'Gaegu',cursive;}
 </style>
 </head>
 <body>
@@ -177,26 +192,34 @@
 
 <script>
 const WORDS_KEY = 'voca-buddy-words-v1';
-const REWARD_KEY = 'voca-buddy-reward-v1';
+const REWARD_KEY = 'voca-buddy-reward-v2';
 const MAX_WORDS = 8;
 
 let words = [];
-let reward = { character:'dragon', stars:0 };
+let reward = { stars:0 };
 let activeTab = 'list';
 
-const CHARACTERS = {
-  dragon: { name:'아기 드래곤', emojis:['🥚','🐣','🐲','🐉'] },
-  unicorn:{ name:'유니콘', emojis:['🥚','🐴','🦄','🦄✨'] },
-  cat:    { name:'고양이', emojis:['🥚','🐱','😺','😻'] },
-  puppy:  { name:'강아지', emojis:['🥚','🐶','🐕','🦮'] }
-};
-const STAGE_LABELS = ['알', '아기', '어린이', '다 자람'];
-const STAGE_THRESHOLDS = [0, 10, 25, 50]; // 별 개수 기준
+// 순서대로 잠금 해제되는 캐릭터 목록. 새 동물을 추가하고 싶으면 이 배열 끝에 객체만 더 넣으면 돼요.
+const ANIMALS = [
+  { id:'dragon',       name:'드래곤',        emoji:'🐉', from:'#FFD3C2', to:'#FF7A5C' },
+  { id:'dolphin',      name:'돌고래',        emoji:'🐬', from:'#CFF3FF', to:'#2F9BD6' },
+  { id:'flyingsquirrel', name:'하늘다람쥐',  emoji:'🐿️', from:'#E8DFFF', to:'#8C6FE0' },
+  { id:'unicorn',      name:'유니콘',        emoji:'🦄', from:'#FFE3F3', to:'#E074C2' },
+  { id:'axolotl',      name:'우파루파',      emoji:'🦎', from:'#FFE0EC', to:'#FF8FB8' },
+  { id:'gecko',        name:'크레스티드게코', emoji:'🦎', from:'#E4F7DE', to:'#5FA84C' },
+  { id:'goldenmonkey', name:'황금 원숭이',   emoji:'🐒', from:'#FFF3C4', to:'#E6AC1F' },
+  { id:'marten',       name:'담비',          emoji:'🦡', from:'#EFE6DC', to:'#8A6A4B' },
+  { id:'whitetiger',   name:'백호',          emoji:'🐯', from:'#F1F5FF', to:'#6E86B8' },
+  { id:'redpanda',     name:'렛서판다',      emoji:'🦝', from:'#FFE7DA', to:'#C1622A' }
+];
+const STAGE_LABELS = ['알', '아기', '성장 중', '다 자람'];
+const STAGE_THRESH = [0, 3, 7, 12];       // 한 캐릭터 안에서 단계가 바뀌는 별 개수
+const STARS_PER_ANIMAL = STAGE_THRESH[STAGE_THRESH.length-1]; // 캐릭터 한 마리를 다 키우는 데 필요한 별
 
 // ---------- storage (localStorage: data stays on this device/browser) ----------
 async function loadAll(){
   try{ const raw = localStorage.getItem(WORDS_KEY); words = raw ? JSON.parse(raw) : []; }catch(e){ words = []; }
-  try{ const raw = localStorage.getItem(REWARD_KEY); reward = raw ? JSON.parse(raw) : {character:'dragon', stars:0}; }catch(e){ reward = {character:'dragon', stars:0}; }
+  try{ const raw = localStorage.getItem(REWARD_KEY); reward = raw ? JSON.parse(raw) : {stars:0}; }catch(e){ reward = {stars:0}; }
 }
 async function saveWords(){ try{ localStorage.setItem(WORDS_KEY, JSON.stringify(words)); }catch(e){ console.error(e); } }
 async function saveReward(){ try{ localStorage.setItem(REWARD_KEY, JSON.stringify(reward)); }catch(e){ console.error(e); } }
@@ -213,10 +236,18 @@ function speak(text, rate){
   window.speechSynthesis.speak(u);
 }
 
-// ---------- stage / reward helpers ----------
-function getStageIndex(stars){
+// ---------- 진행 상황 계산 ----------
+function getAnimalIndex(stars){
+  return Math.min(ANIMALS.length-1, Math.floor(stars / STARS_PER_ANIMAL));
+}
+function getStarsIntoCurrentAnimal(stars){
+  const idx = getAnimalIndex(stars);
+  const used = idx * STARS_PER_ANIMAL;
+  return Math.min(STARS_PER_ANIMAL, stars - used);
+}
+function getStageIndex(starsIntoAnimal){
   let idx = 0;
-  for(let i=0;i<STAGE_THRESHOLDS.length;i++){ if(stars>=STAGE_THRESHOLDS[i]) idx = i; }
+  for(let i=0;i<STAGE_THRESH.length;i++){ if(starsIntoAnimal>=STAGE_THRESH[i]) idx = i; }
   return idx;
 }
 async function addStar(){
@@ -226,8 +257,10 @@ async function addStar(){
 }
 function renderStatusChip(){
   const chip = document.getElementById('statusChip');
-  const stage = getStageIndex(reward.stars);
-  const emoji = CHARACTERS[reward.character].emojis[stage];
+  const animalIdx = getAnimalIndex(reward.stars);
+  const starsIn = getStarsIntoCurrentAnimal(reward.stars);
+  const stage = getStageIndex(starsIn);
+  const emoji = stage===0 ? '🥚' : ANIMALS[animalIdx].emoji;
   chip.innerHTML = `${emoji} <span>⭐ ${reward.stars}</span>`;
   chip.onclick = ()=>{ document.querySelector('.tab-btn[data-tab="reward"]').click(); };
 }
@@ -472,31 +505,58 @@ function matchClick(idx){
 
 // ---------- 보상 / 캐릭터 ----------
 function renderReward(panel){
-  const stage = getStageIndex(reward.stars);
-  const emoji = CHARACTERS[reward.character].emojis[stage];
-  const nextThreshold = STAGE_THRESHOLDS[stage+1];
-  const prevThreshold = STAGE_THRESHOLDS[stage];
-  const pct = nextThreshold ? Math.min(100, Math.round((reward.stars-prevThreshold)/(nextThreshold-prevThreshold)*100)) : 100;
+  const animalIdx = getAnimalIndex(reward.stars);
+  const starsIn = getStarsIntoCurrentAnimal(reward.stars);
+  const stage = getStageIndex(starsIn);
+  const current = ANIMALS[animalIdx];
+  const heroEmoji = stage===0 ? '🥚' : current.emoji;
+  const nextThresh = STAGE_THRESH[stage+1];
+  const prevThresh = STAGE_THRESH[stage];
+  const pct = nextThresh ? Math.min(100, Math.round((starsIn-prevThresh)/(nextThresh-prevThresh)*100)) : 100;
+  const isLastAnimal = animalIdx === ANIMALS.length-1;
+  const fullyGrown = stage === STAGE_THRESH.length-1;
+
   panel.innerHTML = `
-    <div class="char-hero">
-      <span class="emoji">${emoji}</span>
-      <div class="stage-name">${CHARACTERS[reward.character].name} · ${STAGE_LABELS[stage]}</div>
+    <div class="char-hero" style="background:linear-gradient(160deg, ${current.from}, ${current.to});">
+      <span class="hero-emoji">${heroEmoji}</span>
+      <div class="stage-sparkles">${'✨'.repeat(stage)}</div>
+      <div class="stage-name">${current.name} · ${STAGE_LABELS[stage]}</div>
     </div>
     <div class="star-bar-wrap">
-      <div class="star-count">⭐ ${reward.stars}개 모았어요</div>
+      <div class="star-count">⭐ 총 ${reward.stars}개 모았어요</div>
       <div class="star-bar-bg"><div class="star-bar-fill" style="width:${pct}%"></div></div>
-      <div class="star-next">${nextThreshold ? `다음 단계까지 ⭐ ${nextThreshold-reward.stars}개 남았어요` : '최고 단계까지 성장했어요! 🎉'}</div>
+      <div class="star-next">${
+        fullyGrown && isLastAnimal ? '와, 모든 캐릭터를 다 키웠어요! 🎉'
+        : fullyGrown ? `${current.name}을(를) 다 키웠어요! 다음 친구가 곧 나타나요 🎉`
+        : `다음 단계까지 ⭐ ${nextThresh-starsIn}개 남았어요`
+      }</div>
     </div>
-    <div class="char-grid" id="charGrid"></div>
+    <div class="roster-title">나의 캐릭터 도감 (${Math.min(animalIdx + (fullyGrown?1:0), ANIMALS.length)} / ${ANIMALS.length})</div>
+    <div class="roster-grid" id="rosterGrid"></div>
   `;
-  const grid = panel.querySelector('#charGrid');
-  Object.keys(CHARACTERS).forEach(key=>{
-    const c = CHARACTERS[key];
-    const div = document.createElement('div');
-    div.className = 'char-option' + (key===reward.character ? ' selected' : '');
-    div.innerHTML = `<div class="emoji">${c.emojis[getStageIndex(reward.stars)]}</div><div class="name">${c.name}</div>`;
-    div.addEventListener('click', async ()=>{ reward.character = key; await saveReward(); render(); });
-    grid.appendChild(div);
+
+  const grid = panel.querySelector('#rosterGrid');
+  ANIMALS.forEach((a, i)=>{
+    const card = document.createElement('div');
+    if(i < animalIdx || (i===animalIdx && fullyGrown)){
+      // 완료된 캐릭터
+      card.className = 'roster-card done';
+      card.style.background = `linear-gradient(160deg, ${a.from}, ${a.to})`;
+      card.innerHTML = `<div class="roster-emoji">${a.emoji}</div><div class="roster-name">${a.name}</div><div class="roster-badge">완료 ✓</div>`;
+    }else if(i === animalIdx){
+      // 지금 키우는 중
+      card.className = 'roster-card current';
+      card.innerHTML = `<div class="roster-emoji">${stage===0?'🥚':a.emoji}</div><div class="roster-name">${a.name}</div><div class="roster-badge">${STAGE_LABELS[stage]}</div>`;
+    }else if(i === animalIdx+1){
+      // 바로 다음: 이름은 공개, 모습은 실루엣
+      card.className = 'roster-card next';
+      card.innerHTML = `<div class="roster-emoji silhouette">${a.emoji}</div><div class="roster-name">${a.name}</div><div class="roster-badge">다음 친구</div>`;
+    }else{
+      // 그 이후: 완전 미공개
+      card.className = 'roster-card locked';
+      card.innerHTML = `<div class="roster-emoji mystery-mark">?</div><div class="roster-name">???</div><div class="roster-badge">잠김</div>`;
+    }
+    grid.appendChild(card);
   });
 }
 
