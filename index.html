@@ -157,6 +157,13 @@
   .match-card.selected{border-color:var(--purple); background:#EFE3FA;}
   .match-card.matched{background:var(--grass); border-color:var(--grass-dark); color:var(--white); cursor:default;}
   .match-card.shake{background:var(--coral); border-color:var(--coral-dark); color:var(--white);}
+  .match-pager{display:flex; align-items:center; justify-content:center; gap:16px; margin-top:16px;}
+  .pager-btn{
+    width:38px; height:38px; border-radius:50%; border:none; background:var(--purple); color:var(--white);
+    font-size:18px; font-weight:700; cursor:pointer; box-shadow:0 3px 0 var(--purple-dark);
+  }
+  .pager-btn:disabled{background:#D8DEE8; box-shadow:none; cursor:not-allowed; color:#B0B9C6;}
+  .pager-label{font-family:'Gaegu',cursive; font-size:17px; font-weight:700; color:var(--navy); min-width:44px; text-align:center;}
 
   /* 스펠잇 */
   .spell-meta{text-align:center; color:var(--muted); font-size:13px; margin-bottom:2px;}
@@ -417,6 +424,7 @@ function highlightExample(ex, en){
   }
   return escaped;
 }
+function wordsSignature(){ return words.map(w=>w.id).join('|'); }
 function shuffle(arr){
   const a = arr.slice();
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -811,47 +819,77 @@ async function quizBAnswer(btn, word){
 }
 
 // ---------- 매칭게임 ----------
-let matchCards = [], matchSelected = [], matchLock = false;
+let matchRounds = null, matchPage = 1, matchWordsSig = null;
+function buildMatchRound(groupWords){
+  const cards = [];
+  groupWords.forEach(w=>{ cards.push({wordId:w.id, text:w.en, matched:false}); cards.push({wordId:w.id, text:w.ko, matched:false}); });
+  return { cards: shuffle(cards), selected: [], lock:false, awarded:false };
+}
+function setupMatchRounds(){
+  const shuffled = shuffle(words.slice());
+  if(shuffled.length > 6){
+    const half = Math.ceil(shuffled.length/2);
+    matchRounds = { 1: buildMatchRound(shuffled.slice(0, half)), 2: buildMatchRound(shuffled.slice(half)) };
+  }else{
+    matchRounds = { 1: buildMatchRound(shuffled) };
+  }
+  matchPage = 1;
+  matchWordsSig = wordsSignature();
+}
 function renderMatch(panel){
   if(words.length < 3){ panel.innerHTML = needMore('매칭게임을 하려면 단어가 3개 이상 필요해요! 🧩'); return; }
-  if(matchCards.length===0) setupMatchGame();
-  panel.innerHTML = '<div class="match-grid" id="matchGrid"></div><div class="star-note">한 판을 다 맞추면 ⭐1개 (이번 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
+  if(!matchRounds || matchWordsSig !== wordsSignature()) setupMatchRounds();
+  const totalPages = Object.keys(matchRounds).length;
+  const round = matchRounds[matchPage];
+  const pagerHtml = totalPages > 1 ?
+    '<div class="match-pager">'+
+      '<button class="pager-btn" id="matchPrev" '+(matchPage<=1?'disabled':'')+'>‹</button>'+
+      '<span class="pager-label">'+matchPage+' / '+totalPages+'</span>'+
+      '<button class="pager-btn" id="matchNext" '+(matchPage>=totalPages?'disabled':'')+'>›</button>'+
+    '</div>' : '';
+  panel.innerHTML =
+    '<div class="match-grid" id="matchGrid"></div>'+
+    pagerHtml+
+    '<div class="star-note">한 판을 다 맞추면 ⭐1개 (이번 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
   const grid = panel.querySelector('#matchGrid');
-  matchCards.forEach((c, idx)=>{
+  round.cards.forEach((c, idx)=>{
     const el = document.createElement('div');
     el.className = 'match-card' + (c.matched ? ' matched' : '');
     el.textContent = c.text;
     if(!c.matched) el.addEventListener('click', ()=> matchClick(idx));
     grid.appendChild(el);
   });
-}
-function setupMatchGame(){
-  const chosen = shuffle(words.slice());
-  const cards = [];
-  chosen.forEach(w=>{ cards.push({wordId:w.id, text:w.en, matched:false}); cards.push({wordId:w.id, text:w.ko, matched:false}); });
-  matchCards = shuffle(cards); matchSelected = []; matchLock = false;
+  const prevBtn = panel.querySelector('#matchPrev');
+  const nextBtn = panel.querySelector('#matchNext');
+  if(prevBtn) prevBtn.addEventListener('click', ()=>{ if(matchPage>1){ matchPage--; render(); } });
+  if(nextBtn) nextBtn.addEventListener('click', ()=>{ if(matchPage<totalPages){ matchPage++; render(); } });
 }
 function matchClick(idx){
-  if(matchLock) return;
-  const card = matchCards[idx];
-  if(card.matched || matchSelected.includes(idx)) return;
-  matchSelected.push(idx);
+  const round = matchRounds[matchPage];
+  if(round.lock) return;
+  const card = round.cards[idx];
+  if(card.matched || round.selected.includes(idx)) return;
+  round.selected.push(idx);
   const els = document.querySelectorAll('.match-card');
   els[idx].classList.add('selected');
-  if(matchSelected.length===2){
-    matchLock = true;
-    const [i1,i2] = matchSelected;
-    const c1 = matchCards[i1], c2 = matchCards[i2];
+  if(round.selected.length===2){
+    round.lock = true;
+    const [i1,i2] = round.selected;
+    const c1 = round.cards[i1], c2 = round.cards[i2];
     if(c1.wordId===c2.wordId){
       setTimeout(async ()=>{
         c1.matched=true; c2.matched=true;
-        matchSelected = []; matchLock = false;
-        const allMatched = matchCards.every(c=>c.matched);
+        round.selected = []; round.lock = false;
+        const allMatched = round.cards.every(c=>c.matched);
         render();
-        if(allMatched){
+        if(allMatched && !round.awarded){
+          round.awarded = true;
           playDing();
           await registerSuccess('match');
-          setTimeout(()=>{ matchCards=[]; render(); }, 900);
+        }
+        const allPagesDone = Object.values(matchRounds).every(r=> r.cards.every(c=>c.matched));
+        if(allPagesDone){
+          setTimeout(()=>{ setupMatchRounds(); render(); }, 900);
         }
       }, 350);
     }else{
@@ -859,17 +897,18 @@ function matchClick(idx){
       els[i1].classList.add('shake'); els[i2].classList.add('shake');
       setTimeout(()=>{
         els[i1].classList.remove('selected','shake'); els[i2].classList.remove('selected','shake');
-        matchSelected = []; matchLock = false;
+        round.selected = []; round.lock = false;
       }, 600);
     }
   }
 }
 
 // ---------- 스펠잇 ----------
-let spellOrder = [], spellIdx = 0, spellBlanks = [], spellTiles = [], spellHints = 0, spellLock = false;
+let spellOrder = [], spellIdx = 0, spellBlanks = [], spellTiles = [], spellHints = 0, spellLock = false, spellWordsSig = null;
 function setupSpellRound(){
   spellOrder = shuffle(words.map(w=>w.id));
   spellIdx = 0;
+  spellWordsSig = wordsSignature();
   setupSpellWord();
 }
 function setupSpellWord(){
@@ -883,7 +922,7 @@ function setupSpellWord(){
 }
 function renderSpell(panel){
   if(words.length < 3){ panel.innerHTML = needMore('스펠잇을 하려면 단어가 3개 이상 필요해요! 🔤'); return; }
-  if(spellOrder.length===0) setupSpellRound();
+  if(spellOrder.length===0 || spellWordsSig !== wordsSignature()) setupSpellRound();
   if(spellIdx >= spellOrder.length){
     panel.innerHTML =
       '<div class="spell-complete">🎉 이번 세트 단어를 모두 완성했어요!</div>'+
@@ -993,13 +1032,14 @@ function checkSpellComplete(){
 }
 
 // ---------- 파이널테스트 ----------
-let finalOrder = [], finalAnswers = {}, finalStatus = {}, finalPhase = 'input', finalHadWrongFirstPass = false;
+let finalOrder = [], finalAnswers = {}, finalStatus = {}, finalPhase = 'input', finalHadWrongFirstPass = false, finalWordsSig = null;
 function setupFinalRound(){
   finalOrder = shuffle(words.map(w=>w.id));
   finalAnswers = {}; finalStatus = {};
   finalOrder.forEach(id=>{ finalAnswers[id]=''; finalStatus[id]='unanswered'; });
   finalPhase = 'input';
   finalHadWrongFirstPass = false;
+  finalWordsSig = wordsSignature();
 }
 function normalizeAnswer(s){ return (s||'').trim().replace(/\s+/g,''); }
 function checkMeaning(userInput, ko){
@@ -1010,7 +1050,7 @@ function checkMeaning(userInput, ko){
 }
 function renderFinal(panel){
   if(words.length < 4){ panel.innerHTML = needMore('테스트A를 하려면 단어가 4개 이상 필요해요! 📝'); return; }
-  if(finalOrder.length===0) setupFinalRound();
+  if(finalOrder.length===0 || finalWordsSig !== wordsSignature()) setupFinalRound();
 
   let rowsHtml = '';
   finalOrder.forEach((id, i)=>{
@@ -1088,20 +1128,21 @@ async function checkFinalTest(){
 }
 
 // ---------- 테스트B (스펠링 + 뜻 직접 쓰기) ----------
-let finalBOrder = [], finalBAnswers = {}, finalBFieldStatus = {}, finalBPhase = 'input', finalBHadWrongFirstPass = false;
+let finalBOrder = [], finalBAnswers = {}, finalBFieldStatus = {}, finalBPhase = 'input', finalBHadWrongFirstPass = false, finalBWordsSig = null;
 function setupFinalBRound(){
   finalBOrder = shuffle(words.map(w=>w.id));
   finalBAnswers = {}; finalBFieldStatus = {};
   finalBOrder.forEach(id=>{ finalBAnswers[id] = {en:'', ko:''}; finalBFieldStatus[id] = {en:'unanswered', ko:'unanswered'}; });
   finalBPhase = 'input';
   finalBHadWrongFirstPass = false;
+  finalBWordsSig = wordsSignature();
 }
 function checkSpelling(userInput, en){
   return (userInput||'').trim().toLowerCase() === (en||'').trim().toLowerCase();
 }
 function renderFinalB(panel){
   if(words.length < 4){ panel.innerHTML = needMore('테스트B를 하려면 단어가 4개 이상 필요해요! 📝'); return; }
-  if(finalBOrder.length===0) setupFinalBRound();
+  if(finalBOrder.length===0 || finalBWordsSig !== wordsSignature()) setupFinalBRound();
 
   let rowsHtml = '';
   finalBOrder.forEach((id, i)=>{
