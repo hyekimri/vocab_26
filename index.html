@@ -194,6 +194,10 @@
   .ft-input.wrong{border-color:var(--coral); background:#FFF2EE;}
   .ft-input:disabled{background:#F7FAFD; color:var(--muted);}
   .ft-answer{font-size:11.5px; color:var(--coral-dark); width:100%; padding-left:104px;}
+  .ftb-row{padding:12px 2px; border-bottom:1px dashed var(--line);}
+  .ftb-top{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+  .ftb-fields{display:flex; gap:8px; flex-wrap:wrap; padding-left:30px;}
+  .ftb-fields .ft-input{min-width:110px;}
   .ft-check-btn{
     width:100%; margin-top:16px; font-family:'Gaegu',cursive; font-size:17px; font-weight:700;
     background:var(--coral); color:var(--white); border:none; border-radius:14px; padding:13px; cursor:pointer; box-shadow:0 4px 0 var(--coral-dark);
@@ -249,7 +253,8 @@
   <button class="tab-btn" data-tab="quizb">🔡 퀴즈B</button>
   <button class="tab-btn" data-tab="match">🧩 매칭게임</button>
   <button class="tab-btn" data-tab="spell">🔤 스펠잇</button>
-  <button class="tab-btn" data-tab="final">📝 파이널테스트</button>
+  <button class="tab-btn" data-tab="final">📝 테스트A</button>
+  <button class="tab-btn" data-tab="finalb">📝 테스트B</button>
   <button class="tab-btn" data-tab="reward">🐉 캐릭터 키우기</button>
 </div>
 
@@ -270,7 +275,7 @@ let archive = [];
 let selectedArchiveDate = null;
 let editingId = null;
 let activeTab = 'list';
-let reward = { stars:0, spellItEverCompleted:false, finalTestEverCompleted:false };
+let reward = { stars:0, spellItEverCompleted:false, finalTestEverCompleted:false, testBEverCompleted:false };
 let setProgress = { flashCorrect:0, flashStars:0, quizCorrect:0, quizStars:0, matchWins:0, matchStars:0 };
 
 const STAGE_IMAGES = {
@@ -346,7 +351,7 @@ function stageBgGradient(animal, stage){
 // ---------- storage ----------
 async function loadAll(){
   try{ const raw = localStorage.getItem(WORDS_KEY); words = raw ? JSON.parse(raw) : []; }catch(e){ words = []; }
-  try{ const raw = localStorage.getItem(REWARD_KEY); reward = raw ? Object.assign({stars:0,spellItEverCompleted:false,finalTestEverCompleted:false}, JSON.parse(raw)) : {stars:0,spellItEverCompleted:false,finalTestEverCompleted:false}; }catch(e){ reward = {stars:0,spellItEverCompleted:false,finalTestEverCompleted:false}; }
+  try{ const raw = localStorage.getItem(REWARD_KEY); reward = raw ? Object.assign({stars:0,spellItEverCompleted:false,finalTestEverCompleted:false,testBEverCompleted:false}, JSON.parse(raw)) : {stars:0,spellItEverCompleted:false,finalTestEverCompleted:false,testBEverCompleted:false}; }catch(e){ reward = {stars:0,spellItEverCompleted:false,finalTestEverCompleted:false,testBEverCompleted:false}; }
   try{ const raw = localStorage.getItem(SETPROG_KEY); setProgress = raw ? JSON.parse(raw) : {flashCorrect:0,flashStars:0,quizCorrect:0,quizStars:0,matchWins:0,matchStars:0}; }catch(e){ setProgress = {flashCorrect:0,flashStars:0,quizCorrect:0,quizStars:0,matchWins:0,matchStars:0}; }
   try{ const raw = localStorage.getItem(ARCHIVE_KEY); archive = raw ? JSON.parse(raw) : []; }catch(e){ archive = []; }
 }
@@ -397,10 +402,20 @@ function highlightExample(ex, en){
   if(!ex) return '';
   const escaped = escapeHtml(ex);
   const escEn = escapeRegex(escapeHtml(en));
-  const re = new RegExp('\\b('+escEn+')(es|ed|ing|est|er|s)?\\b','i');
-  return escaped.replace(re, function(m, base, suffix){
-    return '<span class="hl-word">'+base+'</span>'+(suffix||'');
-  });
+  const patterns = [ new RegExp('\\b('+escEn+')(es|ed|ing|est|er|s|d)?\\b','i') ];
+  if(/e$/i.test(en)){
+    const baseNoE = escapeRegex(escapeHtml(en.slice(0,-1)));
+    patterns.push(new RegExp('\\b('+baseNoE+')(ing|ed)\\b','i'));
+  }
+  for(let i=0;i<patterns.length;i++){
+    const re = patterns[i];
+    if(re.test(escaped)){
+      return escaped.replace(re, function(m, base, suffix){
+        return '<span class="hl-word">'+base+'</span>'+(suffix||'');
+      });
+    }
+  }
+  return escaped;
 }
 function shuffle(arr){
   const a = arr.slice();
@@ -475,6 +490,7 @@ function render(){
   if(activeTab==='match') renderMatch(panel);
   if(activeTab==='spell') renderSpell(panel);
   if(activeTab==='final') renderFinal(panel);
+  if(activeTab==='finalb') renderFinalB(panel);
   if(activeTab==='reward') renderReward(panel);
   renderStatusChip();
 }
@@ -671,8 +687,9 @@ function renderFlash(panel){
       '</div>'+
       '<div class="flash-hint">카드를 눌러서 뜻을 확인하세요</div>'+
       '<div class="sound-row">'+
-        '<button class="sound-btn" id="spkNormal">🔊 발음</button>'+
+        '<button class="sound-btn" id="spkNormal">🔊 기본</button>'+
         '<button class="sound-btn" id="spkSlow">🐢 천천히</button>'+
+        '<button class="sound-btn" id="spkSlower">🐌 더 천천히</button>'+
         (word.ex ? '<button class="sound-btn" id="spkEx">📖 예문 듣기</button>' : '')+
       '</div>'+
       '<div class="flash-actions">'+
@@ -685,6 +702,7 @@ function renderFlash(panel){
   card.addEventListener('click', ()=> card.classList.toggle('flipped'));
   panel.querySelector('#spkNormal').addEventListener('click', e=>{ e.stopPropagation(); speak(word.en, 0.95); });
   panel.querySelector('#spkSlow').addEventListener('click', e=>{ e.stopPropagation(); speak(word.en, 0.6); });
+  panel.querySelector('#spkSlower').addEventListener('click', e=>{ e.stopPropagation(); speak(word.en, 0.4); });
   const exBtn = panel.querySelector('#spkEx');
   if(exBtn) exBtn.addEventListener('click', e=>{ e.stopPropagation(); speak(word.ex, 0.9); });
   panel.querySelector('#knowBtn').addEventListener('click', e=>{ e.stopPropagation(); flashAnswer(true); });
@@ -887,6 +905,7 @@ function renderSpell(panel){
     '<div class="sound-row" style="justify-content:center;">'+
       '<button class="sound-btn" id="spSpk">🔊 다시 듣기</button>'+
       '<button class="sound-btn" id="spSpkSlow">🐢 천천히</button>'+
+      '<button class="sound-btn" id="spSpkSlower">🐌 더 천천히</button>'+
     '</div>'+
     '<div class="spell-ko">뜻: '+escapeHtml(word.ko)+'</div>'+
     '<div class="spell-word-row" id="spellBlanksRow"></div>'+
@@ -917,6 +936,7 @@ function renderSpell(panel){
   });
   panel.querySelector('#spSpk').addEventListener('click', ()=> speak(word.en, 0.95));
   panel.querySelector('#spSpkSlow').addEventListener('click', ()=> speak(word.en, 0.6));
+  panel.querySelector('#spSpkSlower').addEventListener('click', ()=> speak(word.en, 0.4));
   const hintBtn = panel.querySelector('#hintBtn');
   hintBtn.addEventListener('click', useHint);
 }
@@ -989,7 +1009,7 @@ function checkMeaning(userInput, ko){
   return options.includes(norm);
 }
 function renderFinal(panel){
-  if(words.length < 4){ panel.innerHTML = needMore('파이널테스트를 하려면 단어가 4개 이상 필요해요! 📝'); return; }
+  if(words.length < 4){ panel.innerHTML = needMore('테스트A를 하려면 단어가 4개 이상 필요해요! 📝'); return; }
   if(finalOrder.length===0) setupFinalRound();
 
   let rowsHtml = '';
@@ -1002,7 +1022,7 @@ function renderFinal(panel){
       '<div class="ft-row">'+
         '<span class="ft-num">'+(i+1)+'.</span>'+
         '<span class="ft-en">'+escapeHtml(w.en)+'</span>'+
-        '<span class="ft-spk"><button data-en="'+escapeAttr(w.en)+'" data-rate="0.95">🔊</button><button data-en="'+escapeAttr(w.en)+'" data-rate="0.6">🐢</button></span>'+
+        '<span class="ft-spk"><button data-en="'+escapeAttr(w.en)+'" data-rate="0.95">🔊</button><button data-en="'+escapeAttr(w.en)+'" data-rate="0.6">🐢</button><button data-en="'+escapeAttr(w.en)+'" data-rate="0.4">🐌</button></span>'+
         '<input class="ft-input '+cls+'" data-id="'+id+'" placeholder="뜻을 써보세요" value="'+escapeAttr(finalAnswers[id])+'" '+(disabled?'disabled':'')+'/>'+
         (status==='wrong-final' ? '<div class="ft-answer">정답: '+escapeHtml(w.ko)+'</div>' : '')+
       '</div>';
@@ -1067,6 +1087,104 @@ async function checkFinalTest(){
   render();
 }
 
+// ---------- 테스트B (스펠링 + 뜻 직접 쓰기) ----------
+let finalBOrder = [], finalBAnswers = {}, finalBFieldStatus = {}, finalBPhase = 'input', finalBHadWrongFirstPass = false;
+function setupFinalBRound(){
+  finalBOrder = shuffle(words.map(w=>w.id));
+  finalBAnswers = {}; finalBFieldStatus = {};
+  finalBOrder.forEach(id=>{ finalBAnswers[id] = {en:'', ko:''}; finalBFieldStatus[id] = {en:'unanswered', ko:'unanswered'}; });
+  finalBPhase = 'input';
+  finalBHadWrongFirstPass = false;
+}
+function checkSpelling(userInput, en){
+  return (userInput||'').trim().toLowerCase() === (en||'').trim().toLowerCase();
+}
+function renderFinalB(panel){
+  if(words.length < 4){ panel.innerHTML = needMore('테스트B를 하려면 단어가 4개 이상 필요해요! 📝'); return; }
+  if(finalBOrder.length===0) setupFinalBRound();
+
+  let rowsHtml = '';
+  finalBOrder.forEach((id, i)=>{
+    const w = words.find(x=>x.id===id);
+    const fs = finalBFieldStatus[id];
+    const enDisabled = fs.en==='correct' || fs.en==='wrong-final';
+    const koDisabled = fs.ko==='correct' || fs.ko==='wrong-final';
+    const enCls = fs.en==='correct' ? 'correct' : (fs.en==='wrong-retry'||fs.en==='wrong-final') ? 'wrong' : '';
+    const koCls = fs.ko==='correct' ? 'correct' : (fs.ko==='wrong-retry'||fs.ko==='wrong-final') ? 'wrong' : '';
+    rowsHtml +=
+      '<div class="ftb-row">'+
+        '<div class="ftb-top">'+
+          '<span class="ft-num">'+(i+1)+'.</span>'+
+          '<span class="ft-spk"><button data-en="'+escapeAttr(w.en)+'" data-rate="0.95">🔊</button><button data-en="'+escapeAttr(w.en)+'" data-rate="0.6">🐢</button><button data-en="'+escapeAttr(w.en)+'" data-rate="0.4">🐌</button></span>'+
+        '</div>'+
+        '<div class="ftb-fields">'+
+          '<input class="ft-input '+enCls+'" data-id="'+id+'" data-field="en" placeholder="영단어 스펠링" value="'+escapeAttr(finalBAnswers[id].en)+'" '+(enDisabled?'disabled':'')+'/>'+
+          '<input class="ft-input '+koCls+'" data-id="'+id+'" data-field="ko" placeholder="뜻" value="'+escapeAttr(finalBAnswers[id].ko)+'" '+(koDisabled?'disabled':'')+'/>'+
+        '</div>'+
+        (fs.en==='wrong-final' ? '<div class="ft-answer">정답 스펠링: '+escapeHtml(w.en)+'</div>' : '')+
+        (fs.ko==='wrong-final' ? '<div class="ft-answer">정답 뜻: '+escapeHtml(w.ko)+'</div>' : '')+
+      '</div>';
+  });
+
+  let resultHtml = '';
+  if(finalBPhase==='done'){
+    const correctCount = finalBOrder.filter(id=> finalBFieldStatus[id].en==='correct' && finalBFieldStatus[id].ko==='correct').length;
+    resultHtml = '<div class="ft-result">결과: '+correctCount+' / '+finalBOrder.length+' 개 맞았어요!</div>'+
+      '<button class="ft-retry-btn" id="ftbRetryBtn">🔄 새 테스트 시작하기 (순서 랜덤)</button>';
+  }
+
+  panel.innerHTML =
+    '<div class="ft-intro">소리를 듣고 스펠링과 뜻을 각각 입력해보세요. 다 쓴 뒤 아래 버튼으로 확인해요.</div>'+
+    rowsHtml+
+    (finalBPhase==='done' ? resultHtml : '<button class="ft-check-btn" id="ftbCheckBtn">'+(finalBPhase==='retry' ? '다시 확인하기' : '정답 확인하기')+'</button>')+
+    '<div class="star-note">한 번에 스펠링·뜻 모두 다 맞히면(재도전 없이) ⭐3개 (처음 한 번만) / 이후엔 성공할 때마다 ⭐1개</div>';
+
+  panel.querySelectorAll('.ft-spk button').forEach(b=>{
+    b.addEventListener('click', ()=> speak(b.dataset.en, parseFloat(b.dataset.rate)));
+  });
+  panel.querySelectorAll('.ftb-fields .ft-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{ finalBAnswers[inp.dataset.id][inp.dataset.field] = inp.value; });
+  });
+  const checkBtn = panel.querySelector('#ftbCheckBtn');
+  if(checkBtn) checkBtn.addEventListener('click', checkFinalTestB);
+  const retryBtn = panel.querySelector('#ftbRetryBtn');
+  if(retryBtn) retryBtn.addEventListener('click', ()=>{ setupFinalBRound(); render(); });
+}
+async function checkFinalTestB(){
+  let anyWrongThisPass = false;
+  finalBOrder.forEach(id=>{
+    const w = words.find(x=>x.id===id);
+    const fs = finalBFieldStatus[id];
+    if(fs.en!=='correct' && fs.en!=='wrong-final'){
+      const ok = checkSpelling(finalBAnswers[id].en, w.en);
+      if(ok) fs.en='correct';
+      else{ anyWrongThisPass = true; fs.en = finalBPhase==='input' ? 'wrong-retry' : 'wrong-final'; }
+    }
+    if(fs.ko!=='correct' && fs.ko!=='wrong-final'){
+      const ok2 = checkMeaning(finalBAnswers[id].ko, w.ko);
+      if(ok2) fs.ko='correct';
+      else{ anyWrongThisPass = true; fs.ko = finalBPhase==='input' ? 'wrong-retry' : 'wrong-final'; }
+    }
+  });
+  if(finalBPhase==='input'){
+    if(anyWrongThisPass){ finalBHadWrongFirstPass = true; finalBPhase = 'retry'; playBuzz(); }
+    else{ finalBPhase='done'; playDing(); }
+  }else if(finalBPhase==='retry'){
+    finalBPhase = 'done';
+    if(!anyWrongThisPass) playDing(); else playBuzz();
+  }
+  if(finalBPhase==='done'){
+    const allCorrect = finalBOrder.every(id=> finalBFieldStatus[id].en==='correct' && finalBFieldStatus[id].ko==='correct');
+    if(allCorrect && !finalBHadWrongFirstPass){
+      let earned = 3;
+      if(reward.testBEverCompleted) earned = 1; else { reward.testBEverCompleted = true; }
+      await grantStars(earned);
+      await saveReward();
+    }
+  }
+  render();
+}
+
 // ---------- 보상 / 캐릭터 ----------
 function renderReward(panel){
   const animalIdx = getAnimalIndex(reward.stars);
@@ -1126,7 +1244,7 @@ function renderReward(panel){
       setTimeout(()=>{ confirmingStarReset=false; if(document.body.contains(resetBtn)) resetBtn.textContent = '⭐ 별 초기화하기'; }, 2500);
       return;
     }
-    reward = { stars:0, spellItEverCompleted:false, finalTestEverCompleted:false };
+    reward = { stars:0, spellItEverCompleted:false, finalTestEverCompleted:false, testBEverCompleted:false };
     await saveReward();
     render();
   });
