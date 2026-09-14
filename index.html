@@ -245,7 +245,8 @@
   <button class="tab-btn active" data-tab="list">✏️ 단어 입력</button>
   <button class="tab-btn" data-tab="vocab">📚 단어장</button>
   <button class="tab-btn" data-tab="flash">🃏 플래시카드</button>
-  <button class="tab-btn" data-tab="quiz">❓ 퀴즈</button>
+  <button class="tab-btn" data-tab="quiz">❓ 퀴즈A</button>
+  <button class="tab-btn" data-tab="quizb">🔡 퀴즈B</button>
   <button class="tab-btn" data-tab="match">🧩 매칭게임</button>
   <button class="tab-btn" data-tab="spell">🔤 스펠잇</button>
   <button class="tab-btn" data-tab="final">📝 파이널테스트</button>
@@ -262,7 +263,7 @@ const WORDS_KEY = 'voca-buddy-words-v1';
 const REWARD_KEY = 'voca-buddy-reward-v2';
 const SETPROG_KEY = 'voca-buddy-setprogress-v1';
 const ARCHIVE_KEY = 'voca-buddy-archive-v1';
-const MAX_WORDS = 10;
+const MAX_WORDS = 16;
 
 let words = [];
 let archive = [];
@@ -319,7 +320,7 @@ const ANIMALS = [
 ];
 const STAGE_LABELS = ['알','부화','갓 태어남','아기','유년기','소년기','청소년기','청년기','성체','다 자람'];
 const STAGE_COUNT = STAGE_LABELS.length;
-const STARS_PER_STAGE = 15;
+const STARS_PER_STAGE = 10;
 const STARS_PER_ANIMAL = STARS_PER_STAGE * (STAGE_COUNT - 1);
 const SET_STAR_CAP = 3;
 const SUCCESS_PER_STAR = 10;
@@ -396,8 +397,10 @@ function highlightExample(ex, en){
   if(!ex) return '';
   const escaped = escapeHtml(ex);
   const escEn = escapeRegex(escapeHtml(en));
-  const re = new RegExp('\\b('+escEn+')\\b','i');
-  return escaped.replace(re, '<span class="hl-word">$1</span>');
+  const re = new RegExp('\\b('+escEn+')(es|ed|ing|est|er|s)?\\b','i');
+  return escaped.replace(re, function(m, base, suffix){
+    return '<span class="hl-word">'+base+'</span>'+(suffix||'');
+  });
 }
 function shuffle(arr){
   const a = arr.slice();
@@ -468,6 +471,7 @@ function render(){
   if(activeTab==='vocab') renderVocabBook(panel);
   if(activeTab==='flash') renderFlash(panel);
   if(activeTab==='quiz') renderQuiz(panel);
+  if(activeTab==='quizb') renderQuizB(panel);
   if(activeTab==='match') renderMatch(panel);
   if(activeTab==='spell') renderSpell(panel);
   if(activeTab==='final') renderFinal(panel);
@@ -707,7 +711,7 @@ function renderQuiz(panel){
     '<div class="quiz-options" id="quizOptions">'+
       options.map(o=>'<button class="quiz-opt'+(quizWrongPicked.includes(o)?' disabled-wrong':'')+'" data-ko="'+escapeAttr(o)+'" '+(quizWrongPicked.includes(o)?'disabled':'')+'>'+escapeHtml(o)+'</button>').join('')+
     '</div>'+
-    '<div class="star-note">정답을 '+SUCCESS_PER_STAR+'번 맞힐 때마다 ⭐1개 (이번 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
+    '<div class="star-note">정답을 '+SUCCESS_PER_STAR+'번 맞힐 때마다 ⭐1개 (퀴즈B와 별을 함께 세요, 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
   panel.querySelector('#quizSpk').addEventListener('click', ()=> speak(word.en));
   panel.querySelectorAll('.quiz-opt').forEach(btn=> btn.addEventListener('click', ()=> quizAnswer(btn, word)));
 }
@@ -736,6 +740,53 @@ async function quizAnswer(btn, word){
       setTimeout(()=>{ pickQuizWord(); render(); }, 1300);
     }else{
       quizWrongPicked.push(chosen);
+      setTimeout(()=>{ render(); }, 700);
+    }
+  }
+}
+
+// ---------- 퀴즈B (뜻 보고 영단어 고르기) ----------
+let quizBWordId = null, quizBAttempts = 0, quizBWrongPicked = [], quizBScore = {correct:0, total:0};
+function renderQuizB(panel){
+  if(words.length < 4){ panel.innerHTML = needMore('퀴즈B를 하려면 단어가 4개 이상 필요해요! ❓'); return; }
+  if(!quizBWordId || !words.find(w=>w.id===quizBWordId)) pickQuizBWord();
+  const word = words.find(w=>w.id===quizBWordId);
+  const options = buildQuizBOptions(word);
+  panel.innerHTML =
+    '<div class="quiz-score">맞은 개수: '+quizBScore.correct+' / '+quizBScore.total+'</div>'+
+    '<div class="quiz-word-row"><div class="quiz-word">'+escapeHtml(word.ko)+'</div></div>'+
+    '<div class="quiz-tries" id="quizBTries">'+(quizBAttempts>0 ? '아쉬워요! 한 번 더 골라보세요 (마지막 기회)' : '')+'</div>'+
+    '<div class="quiz-options" id="quizBOptions">'+
+      options.map(o=>'<button class="quiz-opt'+(quizBWrongPicked.includes(o)?' disabled-wrong':'')+'" data-en="'+escapeAttr(o)+'" '+(quizBWrongPicked.includes(o)?'disabled':'')+'>'+escapeHtml(o)+'</button>').join('')+
+    '</div>'+
+    '<div class="star-note">정답을 '+SUCCESS_PER_STAR+'번 맞힐 때마다 ⭐1개 (퀴즈A와 별을 함께 세요, 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
+  panel.querySelectorAll('.quiz-opt').forEach(btn=> btn.addEventListener('click', ()=> quizBAnswer(btn, word)));
+}
+function pickQuizBWord(){ const pool = words.map(w=>w.id); quizBWordId = pool[Math.floor(Math.random()*pool.length)]; quizBAttempts=0; quizBWrongPicked=[]; }
+function buildQuizBOptions(word){
+  const others = words.filter(w=>w.id!==word.id).map(w=>w.en);
+  const distractors = shuffle(others).slice(0,3);
+  return shuffle([word.en, ...distractors]);
+}
+async function quizBAnswer(btn, word){
+  const chosen = btn.dataset.en;
+  const isCorrect = chosen === word.en;
+  if(isCorrect){
+    playDing();
+    quizBScore.total++; quizBScore.correct++;
+    await registerSuccess('quiz');
+    document.querySelectorAll('#quizBOptions .quiz-opt').forEach(b=>{ b.disabled=true; if(b.dataset.en===word.en) b.classList.add('correct'); });
+    setTimeout(()=>{ pickQuizBWord(); render(); }, 850);
+  }else{
+    quizBAttempts++;
+    playBuzz();
+    btn.classList.add('wrong');
+    if(quizBAttempts>=2){
+      quizBScore.total++;
+      document.querySelectorAll('#quizBOptions .quiz-opt').forEach(b=>{ b.disabled=true; if(b.dataset.en===word.en) b.classList.add('correct'); });
+      setTimeout(()=>{ pickQuizBWord(); render(); }, 1300);
+    }else{
+      quizBWrongPicked.push(chosen);
       setTimeout(()=>{ render(); }, 700);
     }
   }
