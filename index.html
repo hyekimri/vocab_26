@@ -72,6 +72,13 @@
   .wr-top .en{font-weight:700; min-width:70px;}
   .wr-top .ko{color:var(--muted); flex:1;}
   .wr-ex{margin-top:6px; font-size:13px; color:var(--navy); padding-left:38px;}
+  .wr-ex-row{display:flex; align-items:flex-start; gap:8px; margin-top:6px; padding-left:38px;}
+  .wr-ex-row .wr-ex{margin-top:0; padding-left:0; flex:1;}
+  .ex-spk-btn{
+    background:#EFE3FA; color:var(--purple-dark); border:none; border-radius:8px; width:26px; height:26px;
+    cursor:pointer; font-size:12px; flex-shrink:0;
+  }
+  .wr-ex-ko{margin-top:3px; font-size:12px; color:var(--muted);}
   .wr-date{margin-top:3px; font-size:11px; color:var(--muted); padding-left:38px;}
   .hl-word{font-weight:800;}
   .spk-btn{
@@ -80,6 +87,7 @@
   }
   .icon-btn{background:none; border:none; cursor:pointer; font-size:15px; color:#9AA6B8;}
   .icon-btn:hover{color:var(--navy);}
+  .del-confirm{background:var(--coral); color:var(--white); border-radius:10px; padding:4px 9px; font-size:12px; font-weight:700; white-space:nowrap;}
   .newset-btn{
     margin-top:14px; width:100%; font-family:'Gaegu',cursive; font-size:16px; font-weight:700;
     background:var(--yellow); color:var(--navy); border:none; border-radius:12px; padding:12px; box-shadow:0 4px 0 var(--yellow-dark); cursor:pointer;
@@ -147,6 +155,13 @@
   .quiz-opt.wrong{background:var(--coral); border-color:var(--coral-dark); color:var(--white);}
   .quiz-opt.disabled-wrong{opacity:.4; text-decoration:line-through;}
   .quiz-score{text-align:center; color:var(--muted); font-size:13px; margin-bottom:4px;}
+  .quizb-opt-wrap{display:flex; align-items:stretch; gap:6px;}
+  .quizb-opt-wrap .quiz-opt{flex:1; min-width:0;}
+  .quizb-spk{
+    flex-shrink:0; width:40px; border:2px solid var(--line); border-radius:14px; background:var(--white);
+    font-size:15px; cursor:pointer; color:var(--navy);
+  }
+  .quizb-spk:hover{border-color:var(--purple); background:#F5EFFC;}
 
   /* 매칭게임 */
   .match-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
@@ -514,6 +529,7 @@ function renderList(panel){
         '<input id="koInput" placeholder="뜻 (예: 코끼리)" '+(full?'disabled':'')+'/>'+
       '</div>'+
       '<textarea id="exInput" rows="2" placeholder="예문 (선택 사항, 예: I saw an elephant at the zoo.)" '+(full?'disabled':'')+'></textarea>'+
+      '<textarea id="exKoInput" rows="2" placeholder="예문 뜻 (선택 사항, 예: 나는 동물원에서 코끼리를 봤다.)" '+(full?'disabled':'')+'></textarea>'+
       '<button id="addBtn" '+(full?'disabled':'')+'>단어 추가</button>'+
       '<div class="hint-small">'+(full ? '이번 세트가 다 찼어요! 학원 다녀온 뒤 새 단어로 다시 채워보세요.' : '학원에서 배운 단어를 하나씩 입력해요 (최대 '+MAX_WORDS+'개)')+'</div>'+
     '</div>'+
@@ -533,6 +549,7 @@ function renderList(panel){
             '<input class="edit-en" value="'+escapeAttr(w.en)+'" placeholder="영어 단어"/>'+
             '<input class="edit-ko" value="'+escapeAttr(w.ko)+'" placeholder="뜻"/>'+
             '<textarea class="edit-ex" rows="2" placeholder="예문">'+escapeHtml(w.ex||'')+'</textarea>'+
+            '<textarea class="edit-exko" rows="2" placeholder="예문 뜻">'+escapeHtml(w.exKo||'')+'</textarea>'+
             '<div class="edit-actions">'+
               '<button class="save-btn" data-id="'+w.id+'">저장</button>'+
               '<button class="cancel-btn">취소</button>'+
@@ -548,7 +565,14 @@ function renderList(panel){
             '<button class="icon-btn del-btn" data-id="'+w.id+'">✕</button>'+
           '</div>'+
           '<div class="wr-date">'+escapeHtml(w.date||'')+'</div>'+
-          (w.ex ? '<div class="wr-ex">'+highlightExample(w.ex, w.en)+'</div>' : '');
+          (w.ex ?
+            '<div class="wr-ex-row">'+
+              '<button class="ex-spk-btn" data-ex="'+escapeAttr(w.ex)+'">🔊</button>'+
+              '<div class="wr-ex">'+highlightExample(w.ex, w.en)+
+                (w.exKo ? '<div class="wr-ex-ko">'+escapeHtml(w.exKo)+'</div>' : '')+
+              '</div>'+
+            '</div>'
+          : '');
       }
       listEl.appendChild(li);
     });
@@ -557,8 +581,20 @@ function renderList(panel){
   const addBtn = panel.querySelector('#addBtn');
   if(addBtn) addBtn.addEventListener('click', addWord);
   panel.querySelectorAll('.spk-btn').forEach(b=> b.addEventListener('click', ()=> speak(b.dataset.en)));
+  panel.querySelectorAll('.ex-spk-btn').forEach(b=> b.addEventListener('click', ()=> speak(b.dataset.ex, 0.9)));
   panel.querySelectorAll('.del-btn').forEach(b=>{
+    let confirmingDelete = false;
     b.addEventListener('click', async ()=>{
+      if(!confirmingDelete){
+        confirmingDelete = true;
+        b.textContent = '정말 지울까요?';
+        b.classList.add('del-confirm');
+        setTimeout(()=>{
+          confirmingDelete = false;
+          if(document.body.contains(b)){ b.textContent = '✕'; b.classList.remove('del-confirm'); }
+        }, 3000);
+        return;
+      }
       words = words.filter(w=>w.id!==b.dataset.id);
       archive = archive.filter(a=>a.id!==b.dataset.id);
       await saveWords();
@@ -578,11 +614,12 @@ function renderList(panel){
       const en = card.querySelector('.edit-en').value.trim();
       const ko = card.querySelector('.edit-ko').value.trim();
       const ex = card.querySelector('.edit-ex').value.trim();
+      const exKo = card.querySelector('.edit-exko').value.trim();
       if(!en || !ko) return;
       const w = words.find(x=>x.id===b.dataset.id);
-      if(w){ w.en=en; w.ko=ko; w.ex=ex; }
+      if(w){ w.en=en; w.ko=ko; w.ex=ex; w.exKo=exKo; }
       const a = archive.find(x=>x.id===b.dataset.id);
-      if(a){ a.en=en; a.ko=ko; a.ex=ex; }
+      if(a){ a.en=en; a.ko=ko; a.ex=ex; a.exKo=exKo; }
       await saveWords();
       await saveArchive();
       editingId = null;
@@ -612,8 +649,10 @@ async function addWord(){
   const en = document.getElementById('enInput').value.trim();
   const ko = document.getElementById('koInput').value.trim();
   const ex = document.getElementById('exInput').value.trim();
+  const exKoField = document.getElementById('exKoInput');
+  const exKo = exKoField ? exKoField.value.trim() : '';
   if(!en || !ko) return;
-  const newWord = {id:uid(), en, ko, ex, date:todayStr()};
+  const newWord = {id:uid(), en, ko, ex, exKo, date:todayStr()};
   words.push(newWord);
   archive.push(Object.assign({}, newWord));
   await saveWords();
@@ -783,10 +822,14 @@ function renderQuizB(panel){
     '<div class="quiz-word-row"><div class="quiz-word">'+escapeHtml(word.ko)+'</div></div>'+
     '<div class="quiz-tries" id="quizBTries">'+(quizBAttempts>0 ? '아쉬워요! 한 번 더 골라보세요 (마지막 기회)' : '')+'</div>'+
     '<div class="quiz-options" id="quizBOptions">'+
-      options.map(o=>'<button class="quiz-opt'+(quizBWrongPicked.includes(o)?' disabled-wrong':'')+'" data-en="'+escapeAttr(o)+'" '+(quizBWrongPicked.includes(o)?'disabled':'')+'>'+escapeHtml(o)+'</button>').join('')+
+      options.map(o=>'<div class="quizb-opt-wrap">'+
+        '<button class="quiz-opt'+(quizBWrongPicked.includes(o)?' disabled-wrong':'')+'" data-en="'+escapeAttr(o)+'" '+(quizBWrongPicked.includes(o)?'disabled':'')+'>'+escapeHtml(o)+'</button>'+
+        '<button class="quizb-spk" data-en="'+escapeAttr(o)+'" aria-label="발음 듣기">🔊</button>'+
+      '</div>').join('')+
     '</div>'+
     '<div class="star-note">정답을 '+SUCCESS_PER_STAR+'번 맞힐 때마다 ⭐1개 (퀴즈A와 별을 함께 세요, 세트당 최대 '+SET_STAR_CAP+'개, 새 세트 시작하면 초기화돼요)</div>';
-  panel.querySelectorAll('.quiz-opt').forEach(btn=> btn.addEventListener('click', ()=> quizBAnswer(btn, word)));
+  panel.querySelectorAll('#quizBOptions .quiz-opt').forEach(btn=> btn.addEventListener('click', ()=> quizBAnswer(btn, word)));
+  panel.querySelectorAll('.quizb-spk').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); speak(btn.dataset.en); }));
 }
 function pickQuizBWord(){ const pool = words.map(w=>w.id); quizBWordId = pool[Math.floor(Math.random()*pool.length)]; quizBAttempts=0; quizBWrongPicked=[]; }
 function buildQuizBOptions(word){
@@ -950,7 +993,7 @@ function renderSpell(panel){
     '<div class="spell-word-row" id="spellBlanksRow"></div>'+
     '<div class="spell-tiles" id="spellTilesRow"></div>'+
     '<div class="spell-actions">'+
-      '<button class="hint-btn" id="hintBtn" '+(spellHints>=2?'disabled':'')+'>💡 힌트 ('+(2-spellHints)+'번 남음)</button>'+
+      '<button class="hint-btn" id="hintBtn" '+(spellHints>=maxHintsFor(word.en)?'disabled':'')+'>💡 힌트 ('+(maxHintsFor(word.en)-spellHints)+'번 남음)</button>'+
     '</div>'+
     '<div class="star-note">전체 단어를 다 성공하면 ⭐3개 (처음 한 번만) / 이후엔 성공할 때마다 ⭐1개</div>';
 
@@ -997,11 +1040,18 @@ function returnTile(blankIdx){
   spellBlanks[blankIdx] = null;
   render();
 }
+function maxHintsFor(en){
+  const len = (en||'').length;
+  if(len >= 10) return 3;
+  if(len >= 5) return 2;
+  return 1;
+}
 function useHint(){
-  if(spellHints>=2 || spellLock) return;
+  const curWord = words.find(w=>w.id===spellOrder[spellIdx]);
+  if(!curWord || spellHints>=maxHintsFor(curWord.en) || spellLock) return;
   const emptyIdxs = spellBlanks.map((b,i)=>b===null?i:-1).filter(i=>i>=0);
   if(emptyIdxs.length===0) return;
-  const word = words.find(w=>w.id===spellOrder[spellIdx]);
+  const word = curWord;
   const pickIdx = emptyIdxs[Math.floor(Math.random()*emptyIdxs.length)];
   const letter = word.en[pickIdx];
   spellBlanks[pickIdx] = {ch:letter, source:'hint'};
@@ -1041,7 +1091,12 @@ function setupFinalRound(){
   finalHadWrongFirstPass = false;
   finalWordsSig = wordsSignature();
 }
-function normalizeAnswer(s){ return (s||'').trim().replace(/\s+/g,''); }
+function normalizeAnswer(s){
+  return (s||'')
+    .trim()
+    .replace(/\s+/g,'')
+    .replace(/[~～〜.,·ㆍ'"“”‘’()\[\]]/g,'');
+}
 function checkMeaning(userInput, ko){
   const norm = normalizeAnswer(userInput);
   if(!norm) return false;
