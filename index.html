@@ -85,6 +85,10 @@
     background:var(--purple); color:var(--white); border:none; border-radius:10px; width:30px; height:30px;
     cursor:pointer; font-size:14px; flex-shrink:0;
   }
+  .spk-both-btn{
+    background:var(--grass); color:var(--white); border:none; border-radius:10px; height:30px; padding:0 8px;
+    cursor:pointer; font-size:11px; font-weight:700; flex-shrink:0; white-space:nowrap;
+  }
   .icon-btn{background:none; border:none; cursor:pointer; font-size:15px; color:#9AA6B8;}
   .icon-btn:hover{color:var(--navy);}
   .del-confirm{background:var(--coral); color:var(--white); border-radius:10px; padding:4px 9px; font-size:12px; font-weight:700; white-space:nowrap;}
@@ -290,7 +294,8 @@ const WORDS_KEY = 'voca-buddy-words-v1';
 const REWARD_KEY = 'voca-buddy-reward-v2';
 const SETPROG_KEY = 'voca-buddy-setprogress-v1';
 const ARCHIVE_KEY = 'voca-buddy-archive-v1';
-const MAX_WORDS = 16;
+const MAX_WORDS = 20;
+const MATCH_PER_PAGE = 10;
 
 let words = [];
 let archive = [];
@@ -391,13 +396,40 @@ function todayStr(){
 }
 
 // ---------- speech ----------
+let speakSeqToken = 0;
 function speak(text, rate){
   if(!text || !('speechSynthesis' in window)) return;
+  speakSeqToken++;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
   u.rate = rate || 0.95;
   window.speechSynthesis.speak(u);
+}
+// 영단어를 읽고, 잠시 후 한글 뜻을 읽어줘요
+function speakWordAndMeaning(en, ko){
+  if(!en || !('speechSynthesis' in window)) return;
+  const myToken = ++speakSeqToken;
+  window.speechSynthesis.cancel();
+  const u1 = new SpeechSynthesisUtterance(en);
+  u1.lang = 'en-US';
+  u1.rate = 0.95;
+  let started = false;
+  const goKo = ()=>{
+    if(started || myToken !== speakSeqToken) return;
+    started = true;
+    setTimeout(()=>{
+      if(myToken !== speakSeqToken) return;
+      const cleanKo = (ko||'').replace(/[~～〜]/g,'').replace(/\//g,', ').trim();
+      if(!cleanKo) return;
+      const u2 = new SpeechSynthesisUtterance(cleanKo);
+      u2.lang = 'ko-KR';
+      u2.rate = 0.95;
+      window.speechSynthesis.speak(u2);
+    }, 700);
+  };
+  u1.onend = goKo;
+  window.speechSynthesis.speak(u1);
 }
 
 // ---------- sound effects ----------
@@ -559,6 +591,7 @@ function renderList(panel){
         li.innerHTML =
           '<div class="wr-top">'+
             '<button class="spk-btn" data-en="'+escapeAttr(w.en)+'">🔊</button>'+
+            '<button class="spk-both-btn" data-en="'+escapeAttr(w.en)+'" data-ko="'+escapeAttr(w.ko)+'" title="영단어와 뜻 같이 듣기">🔊+뜻</button>'+
             '<span class="en">'+escapeHtml(w.en)+'</span>'+
             '<span class="ko">'+escapeHtml(w.ko)+'</span>'+
             '<button class="icon-btn edit-btn" data-id="'+w.id+'">✏️</button>'+
@@ -582,6 +615,7 @@ function renderList(panel){
   if(addBtn) addBtn.addEventListener('click', addWord);
   panel.querySelectorAll('.spk-btn').forEach(b=> b.addEventListener('click', ()=> speak(b.dataset.en)));
   panel.querySelectorAll('.ex-spk-btn').forEach(b=> b.addEventListener('click', ()=> speak(b.dataset.ex, 0.9)));
+  panel.querySelectorAll('.spk-both-btn').forEach(b=> b.addEventListener('click', ()=> speakWordAndMeaning(b.dataset.en, b.dataset.ko)));
   panel.querySelectorAll('.del-btn').forEach(b=>{
     let confirmingDelete = false;
     b.addEventListener('click', async ()=>{
@@ -870,11 +904,15 @@ function buildMatchRound(groupWords){
 }
 function setupMatchRounds(){
   const shuffled = shuffle(words.slice());
-  if(shuffled.length > 6){
-    const half = Math.ceil(shuffled.length/2);
-    matchRounds = { 1: buildMatchRound(shuffled.slice(0, half)), 2: buildMatchRound(shuffled.slice(half)) };
-  }else{
-    matchRounds = { 1: buildMatchRound(shuffled) };
+  const pageCount = Math.max(1, Math.ceil(shuffled.length / MATCH_PER_PAGE));
+  const base = Math.floor(shuffled.length / pageCount);
+  const extra = shuffled.length % pageCount;
+  matchRounds = {};
+  let start = 0;
+  for(let p=1; p<=pageCount; p++){
+    const size = base + (p <= extra ? 1 : 0);
+    matchRounds[p] = buildMatchRound(shuffled.slice(start, start+size));
+    start += size;
   }
   matchPage = 1;
   matchWordsSig = wordsSignature();
